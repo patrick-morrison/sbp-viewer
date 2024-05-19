@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SBP Viewer Light</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧮</text></svg>">
+    <style>
+        body { margin: 0; background-color: white; color: black; }
+        canvas { display: block; }
+        .controls { position: absolute; top: 0; width: 100%; z-index: 100; }
+        #fileInput {
+            margin: 10px;
+        }
+        .custom-file-input {
+            display: none;
+        }
+        .custom-file-label {
+            cursor: pointer;
+            background-color: #f8f9fa;
+            color: #343a40;
+            border-color: #f8f9fa;
+            padding: 0.375rem 0.75rem;
+            border-radius: 0.25rem;
+        }
+        .custom-file-label:hover {
+            background-color: #e2e6ea;
+        }
+        .footer {
+            position: fixed; bottom: 0; width: 100%; text-align: center; font-size: small; color: gray; background-color: #f8f9fa; padding: 5px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-md navbar-light bg-light controls">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">SBP Viewer Light</a>
+            <ul class="navbar-nav me-auto mb-2 mb-lg-0"></ul>
+            <ul class="navbar-nav mb-2 mb-lg-0 d-flex align-items-center">
+                <li class="nav-item me-2">
+                    <label for="fileInput" class="custom-file-label">Choose File</label>
+                    <input type="file" id="fileInput" accept=".txt" class="custom-file-input">
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script>
+        document.getElementById('fileInput').addEventListener('change', function(event) {
+            var fileName = event.target.files[0].name;
+            document.querySelector('.custom-file-label').textContent = fileName;
+        });
+
+        let pointsData = null;
+        let originalPoints = null;
+        let currentVerticalScale = 10;
+        let currentPointSize = 1;
+        let currentTransparency = 1;
+        let currentIntensityFilter = 0;
+        let pointsObject = null;
+        let geometry = null;
+        let gridHelper = null;
+        let centerYAdjustment = 0;
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.25;
+        controls.screenSpacePanning = true;
+        controls.maxPolarAngle = Math.PI;
+        controls.minPolarAngle = 0;
+        controls.enableRotate = true;
+
+        camera.position.set(0, 0, 50);
+
+        const axesHelper = new THREE.AxesHelper(5);
+        scene.add(axesHelper);
+        axesHelper.visible = true;
+
+        document.getElementById('fileInput').addEventListener('change', handleFileSelect, false);
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            const reader = new FileReader();
+
+            reader.onload = function(e) {
+                const contents = e.target.result;
+                originalPoints = parsePointCloudData(contents);
+                pointsData = processPoints(originalPoints, currentVerticalScale);
+                visualizePointCloud(pointsData);
+            };
+
+            reader.readAsText(file);
+        }
+
+        function parsePointCloudData(data) {
+            const lines = data.split('\n');
+            const points = [];
+            let minIntensity = Infinity;
+            let maxIntensity = -Infinity;
+            let minX = Infinity;
+            let maxX = -Infinity;
+            let minY = Infinity;
+            let maxY = -Infinity;
+            let minZ = Infinity;
+            let maxZ = -Infinity;
+
+            for (let line of lines) {
+                const [x, y, z, intensity] = line.split(' ').map(Number);
+                if (!isNaN(x) && !isNaN(y) && !isNaN(z) && !isNaN(intensity)) {
+                    points.push({ x, y, z, intensity });
+                    if (intensity < minIntensity) minIntensity = intensity;
+                    if (intensity > maxIntensity) maxIntensity = intensity;
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                    if (z < minZ) minZ = z;
+                    if (z > maxZ) maxZ = z;
+                }
+            }
+
+            const centerX = (minX + maxX) / 2;
+            const centerY = (minY + maxY) / 2;
+            const centerZ = (minZ + maxZ) / 2;
+
+            points.forEach(point => {
+                point.x -= centerX;
+                point.y -= centerY;
+                point.z -= centerZ;
+            });
+
+            centerYAdjustment = -centerZ;
+
+            return { points, minIntensity, maxIntensity, minZ, maxZ };
+        }
+
+        function processPoints(pointCloud, scale) {
+            const processedPoints = pointCloud.points.map(point => ({
+                x: point.x,
+                y: point.z * scale,  // Apply scaling to the Z coordinate and map it to Y.
+                z: point.y,  // Map Y coordinate to Z.
+                intensity: point.intensity
+            }));
+
+            return {
+                points: processedPoints,
+                minIntensity: pointCloud.minIntensity,
+                maxIntensity: pointCloud.maxIntensity
+            };
+        }
+
+        function getColor(value, palette) {
+            const norm = value / 1.0;
+            if (palette === 'rainbow') {
+                const hue = (1.0 - norm) * 270; // Adjusted from 240 to 270 to shift blues
+                return new THREE.Color(`hsl(${hue}, 100%, 50%)`);
+            }
+        }
+
+        function visualizePointCloud(pointCloud) {
+            const { points, minIntensity, maxIntensity } = pointCloud;
+            const colorPalette = 'rainbow';
+
+            if (pointsObject) {
+                scene.remove(pointsObject);
+                pointsObject.geometry.dispose();
+                pointsObject.material.dispose();
+            }
+
+            const positions = [];
+            const colors = [];
+            const sizes = [];
+            const opacities = [];
+            let filteredPointCount = 0;
+
+            points.forEach(point => {
+                if (point.intensity >= currentIntensityFilter * maxIntensity) {
+                    positions.push(point.x, point.y, point.z);
+
+                    const intensityNorm = (point.intensity - currentIntensityFilter * maxIntensity) / (maxIntensity - currentIntensityFilter * maxIntensity);
+                    const color = getColor(intensityNorm, colorPalette);
+                    colors.push(color.r, color.g, color.b);
+
+                    sizes.push(currentPointSize * intensityNorm); // Adjust point size based on intensity and slider value
+                    opacities.push((currentTransparency / 2) * intensityNorm); // Halve opacity before applying slider value
+                    filteredPointCount++;
+                }
+            });
+
+            geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            geometry.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
+            geometry.setAttribute('opacity', new THREE.Float32BufferAttribute(opacities, 1));
+
+            const material = new THREE.ShaderMaterial({
+                vertexColors: true,
+                transparent: true,
+                depthTest: false,
+                uniforms: {},
+                vertexShader: `attribute float size;
+                    attribute float opacity;
+                    varying vec3 vColor;
+                    varying float vOpacity;
+                    void main() {
+                        vColor = color;
+                        vOpacity = opacity;
+                        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                        gl_PointSize = size * (300.0 / -mvPosition.z);
+                        gl_Position = projectionMatrix * mvPosition;
+                    }
+                `,
+                fragmentShader: `
+                    varying vec3 vColor;
+                    varying float vOpacity;
+                    void main() {
+                        gl_FragColor = vec4(vColor, vOpacity);
+                        float dist = distance(gl_PointCoord, vec2(0.5, 0.5));
+                        if (dist > 0.5) discard;
+                    }
+                `,
+            });
+
+            pointsObject = new THREE.Points(geometry, material);
+            scene.add(pointsObject);
+
+            renderer.render(scene, camera);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM" crossorigin="anonymous"></script>
+    <div class="footer">
+        Created in 2024 by Patrick Morrison. <a href="https://github.com/patrick-morrison/sbp_viewer" style="color: gray;">Source Code</a>
+    </div>
+</body>
+</html>
