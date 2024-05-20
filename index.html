@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SBP Viewer Light</title>
+    <title>SBP Viewer</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧮</text></svg>">
     <style>
-        body { margin: 0; background-color: white; color: black; }
+        body { margin: 0; background-color: black; color: white; }
         canvas { display: block; }
         .controls { position: absolute; top: 0; width: 100%; z-index: 100; }
-        #fileInput {
+        #fileInput, #verticalScaleContainer, #pointSizeContainer, #transparencyContainer {
             margin: 10px;
         }
         .custom-file-input {
@@ -18,33 +18,124 @@
         }
         .custom-file-label {
             cursor: pointer;
-            background-color: #f8f9fa;
-            color: #343a40;
-            border-color: #f8f9fa;
+            background-color: #343a40;
+            color: #ffffff;
+            border-color: #343a40;
             padding: 0.375rem 0.75rem;
             border-radius: 0.25rem;
         }
         .custom-file-label:hover {
-            background-color: #e2e6ea;
+            background-color: #495057;
+        }
+        .form-range {
+            width: 100%;
+        }
+        .settings-label {
+            margin-bottom: 0.5rem;
+            display: block; text-align: center;
+            cursor: pointer; /* Make label clickable */
         }
         .footer {
-            position: fixed; bottom: 0; width: 100%; text-align: center; font-size: small; color: gray; background-color: #f8f9fa; padding: 5px;
+            position: fixed; bottom: 0; width: 100%; text-align: center; font-size: small; color: gray; background-color: #343a40; padding: 5px;
+        }
+        .link-text {
+            color: #dee2e6; 
+            cursor: pointer;
+            font-size: small;
+            text-decoration: underline;
+            white-space: normal;
+            display: block;
+            width: 100%;
+            max-width: 120px;
+            text-align: center;
+            margin: 0 auto; 
+        }
+        .link-text:hover {
+            color: #ffffff; 
+        }
+        #loadingIndicator {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 200;
+            display: none;
+            color: white;
+            font-size: 24px;
+        }
+        #fileSpinner {
+            display: none;
         }
     </style>
 </head>
 <body>
-    <nav class="navbar navbar-expand-md navbar-light bg-light controls">
+    <nav class="navbar navbar-expand-md navbar-dark bg-dark controls">
         <div class="container-fluid">
-            <a class="navbar-brand" href="#">SBP Viewer Light</a>
-            <ul class="navbar-nav me-auto mb-2 mb-lg-0"></ul>
-            <ul class="navbar-nav mb-2 mb-lg-0 d-flex align-items-center">
-                <li class="nav-item me-2">
-                    <label for="fileInput" class="custom-file-label">Choose File</label>
-                    <input type="file" id="fileInput" accept=".txt" class="custom-file-input">
-                </li>
-            </ul>
+            <a class="navbar-brand" href="#">SBP Viewer</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0"></ul>
+                <ul class="navbar-nav mb-2 mb-lg-0 d-flex align-items-center">
+                    <li class="nav-item me-2 d-flex align-items-center">
+                        <div id="fileSpinner" class="spinner-border text-light me-2" role="status" style="width: 1rem; height: 1rem;">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </li>
+                    <li class="nav-item me-2 d-flex align-items-center">
+                        <label for="fileInput" class="custom-file-label">Choose File</label>
+                        <input type="file" id="fileInput" accept=".txt" class="custom-file-input">
+                    </li>
+                    <li class="nav-item">
+                        <button class="btn btn-dark dropdown-toggle" type="button" id="settingsButton" data-bs-toggle="dropdown" aria-expanded="false">Settings</button>
+                        <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark p-3" aria-labelledby="settingsButton">
+                            <li class="mb-3">
+                                <label for="verticalScale" id="verticalScaleLabel" class="settings-label">Z Scale: 1x</label>
+                                <input type="range" id="verticalScale" min="0.5" max="20" value="1" step="0.5" class="form-range">
+                                <div class="collapse" id="flatNotif">
+                                    <a id="setZFactorLink" class="link-text">Too flat? Increase the vertical scale.</a>
+                                </div>
+                            </li>
+                            <li class="mb-3">
+                                <label for="pointSize" id="pointSizeLabel" class="settings-label">Point Size: 1x</label>
+                                <input type="range" id="pointSize" min="0.1" max="2" value="1" step="0.1" class="form-range">
+                            </li>
+                            <li class="mb-3">
+                                <label for="transparency" id="transparencyLabel" class="settings-label">Opacity: 1x</label>
+                                <input type="range" id="transparency" min="0.1" max="2" value="1" step="0.1" class="form-range">
+                            </li>
+                            <li class="mb-3">
+                                <label id="intensityFilterLabel" class="settings-label">Min Intensity: 0</label>
+                                <input type="range" id="intensityFilter" min="0" max="1" value="0" step="0.01" class="form-range">
+                                <label id="pointCountLabel" class="settings-label" style="font-size: small; color: gray;">Points: 0</label>
+                            </li>
+                            <li class="mb-3">
+                                <label for="axisSelect" class="settings-label">Axis</label>
+                                <select id="axisSelect" class="form-select">
+                                    <option value="world">World Floor</option>
+                                    <option value="centered">Centered</option>
+                                    <option value="hide" selected>Hide Axis</option>
+                                </select>
+                            </li>
+                            <li class="mb-3">
+                                <label for="colorPalette" class="settings-label">Color Palette</label>
+                                <select id="colorPalette" class="form-select">
+                                    <option value="rainbow" selected>Rainbow</option>
+                                    <option value="redBlue">Red/Blue</option>
+                                    <option value="greyscale">Greyscale</option>
+                                    <option value="viridis">Viridis</option>
+                                    <option value="magma">Magma</option>
+                                </select>
+                            </li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
         </div>
     </nav>
+
+    <div id="loadingIndicator">Loading...</div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -56,7 +147,7 @@
 
         let pointsData = null;
         let originalPoints = null;
-        let currentVerticalScale = 10;
+        let currentVerticalScale = 1;
         let currentPointSize = 1;
         let currentTransparency = 1;
         let currentIntensityFilter = 0;
@@ -83,22 +174,119 @@
 
         const axesHelper = new THREE.AxesHelper(5);
         scene.add(axesHelper);
-        axesHelper.visible = true;
+        axesHelper.visible = false;
 
         document.getElementById('fileInput').addEventListener('change', handleFileSelect, false);
 
-        function handleFileSelect(event) {
-            const file = event.target.files[0];
-            const reader = new FileReader();
+        document.getElementById('verticalScale').addEventListener('input', function (event) {
+            showSpinner();
+            setTimeout(() => {
+                currentVerticalScale = event.target.value;
+                document.getElementById('verticalScaleLabel').textContent = `Z Scale: ${currentVerticalScale}x`;
+                if (originalPoints) {
+                    pointsData = processPoints(originalPoints, currentVerticalScale);
+                    visualizePointCloud(pointsData);
+                }
+                adjustGridAndAxes();
+                hideSpinner();
 
-            reader.onload = function(e) {
-                const contents = e.target.result;
-                originalPoints = parsePointCloudData(contents);
-                pointsData = processPoints(originalPoints, currentVerticalScale);
+                var flatNotif = new bootstrap.Collapse(document.getElementById('flatNotif'), { toggle: false });
+                flatNotif.hide();
+            }, 50);
+        });
+
+        document.getElementById('pointSize').addEventListener('input', function (event) {
+            currentPointSize = event.target.value;
+            document.getElementById('pointSizeLabel').textContent = `Point Size: ${currentPointSize}x`;
+            if (pointsData) {
+                updatePointCloud(pointsData);
+            }
+        });
+
+        document.getElementById('transparency').addEventListener('input', function (event) {
+            currentTransparency = event.target.value;
+            document.getElementById('transparencyLabel').textContent = `Opacity: ${currentTransparency}x`;
+            if (pointsData) {
+                updatePointCloud(pointsData);
+            }
+        });
+
+        document.getElementById('intensityFilter').addEventListener('input', function (event) {
+            currentIntensityFilter = event.target.value;
+            document.getElementById('intensityFilterLabel').textContent = `Min Intensity: ${currentIntensityFilter}`;
+            if (pointsData) {
                 visualizePointCloud(pointsData);
-            };
+            }
+        });
 
-            reader.readAsText(file);
+        document.getElementById('axisSelect').addEventListener('change', function (event) {
+            const selectedOption = event.target.value;
+            if (selectedOption === 'world') {
+                if (gridHelper) {
+                    setGridPosition(centerYAdjustment * currentVerticalScale);
+                    gridHelper.visible = true;
+                } else {
+                    createGridHelper();
+                    setGridPosition(centerYAdjustment * currentVerticalScale);
+                }
+            } else if (selectedOption === 'centered') {
+                if (gridHelper) {
+                    setGridPosition(0);
+                    gridHelper.visible = true;
+                } else {
+                    createGridHelper();
+                    setGridPosition(0);
+                }
+            } else {
+                if (gridHelper) gridHelper.visible = false;
+                axesHelper.visible = false;
+            }
+            axesHelper.visible = selectedOption !== 'hide';
+            renderer.render(scene, camera);
+        });
+
+        document.getElementById('colorPalette').addEventListener('change', function () {
+            if (pointsData) {
+                visualizePointCloud(pointsData);
+            }
+        });
+
+        document.getElementById('setZFactorLink').addEventListener('click', function() {
+            event.stopPropagation();
+            document.getElementById('verticalScale').value = 10;
+            document.getElementById('verticalScale').dispatchEvent(new Event('input'));
+            var flatNotif = new bootstrap.Collapse(document.getElementById('flatNotif'), { toggle: false });
+            flatNotif.hide();
+        });
+
+        function handleFileSelect(event) {
+            showSpinner();
+            requestAnimationFrame(() => {
+                const file = event.target.files[0];
+                const reader = new FileReader();
+
+                reader.onload = function(e) {
+                    const contents = e.target.result;
+                    originalPoints = parsePointCloudData(contents);
+                    pointsData = processPoints(originalPoints, currentVerticalScale);
+                    visualizePointCloud(pointsData);
+                    adjustGridAndAxes();
+                    checkFileHeight(originalPoints);
+                    hideSpinner();
+                };
+
+                reader.readAsText(file);
+            });
+        }
+
+        function showSpinner() {
+            const fileSpinner = document.getElementById('fileSpinner');
+            fileSpinner.style.display = 'block';
+        }
+
+        function hideSpinner() {
+            const fileSpinner = document.getElementById('fileSpinner');
+            fileSpinner.style.display = 'none';
         }
 
         function parsePointCloudData(data) {
@@ -158,17 +346,83 @@
             };
         }
 
+        function createGridHelper() {
+            gridHelper = new THREE.GridHelper(100, 100);
+            gridHelper.material.opacity = 0.5; // Set the opacity to half
+            gridHelper.material.transparent = true;
+            scene.add(gridHelper);
+        }
+
+        function setGridPosition(offset) {
+            if (gridHelper) {
+                gridHelper.position.y = offset;
+                axesHelper.position.y = offset;
+            }
+        }
+
+        function adjustGridAndAxes() {
+            const axisOption = document.getElementById('axisSelect').value;
+            if (axisOption === 'world') {
+                setGridPosition(centerYAdjustment * currentVerticalScale);
+            } else if (axisOption === 'centered') {
+                setGridPosition(0);
+            }
+            if (axisOption === 'hide') {
+                if (gridHelper) gridHelper.visible = false;
+                axesHelper.visible = false;
+            }
+        }
+
         function getColor(value, palette) {
             const norm = value / 1.0;
             if (palette === 'rainbow') {
+                // Shift the hue to balance the colors better
                 const hue = (1.0 - norm) * 270; // Adjusted from 240 to 270 to shift blues
                 return new THREE.Color(`hsl(${hue}, 100%, 50%)`);
+            } else if (palette === 'redBlue') {
+                const r = norm > 0.5 ? 1 : 2 * norm;
+                const g = norm > 0.5 ? 2 * (1 - norm) : 2 * norm;
+                const b = norm < 0.5 ? 1 : 2 * (1 - norm);
+                return new THREE.Color(r * 0.6 + 0.4, g * 0.6 + 0.4, b * 0.6 + 0.4); // Muted colors
+            } else if (palette === 'greyscale') {
+                return new THREE.Color(norm, norm, norm);
+            } else if (palette === 'viridis') {
+                const viridis = [
+                    [68, 1, 84],
+                    [72, 40, 120],
+                    [62, 74, 137],
+                    [49, 104, 142],
+                    [38, 130, 142],
+                    [31, 158, 137],
+                    [53, 183, 121],
+                    [109, 205, 89],
+                    [180, 222, 44],
+                    [253, 231, 37]
+                ];
+                const colorIndex = Math.floor(norm * (viridis.length - 1));
+                const color = viridis[colorIndex];
+                return new THREE.Color(`rgb(${color[0]}, ${color[1]}, ${color[2]})`);
+            } else if (palette === 'magma') {
+                const magma = [
+                    [0, 0, 4],
+                    [28, 16, 68],
+                    [79, 18, 123],
+                    [129, 37, 129],
+                    [181, 54, 122],
+                    [229, 80, 100],
+                    [252, 135, 97],
+                    [254, 194, 135],
+                    [252, 253, 191]
+                ];
+                const colorIndex = Math.floor(norm * (magma.length - 1));
+                const color = magma[colorIndex];
+                return new THREE.Color(`rgb(${color[0]}, ${color[1]}, ${color[2]})`);
             }
         }
 
         function visualizePointCloud(pointCloud) {
             const { points, minIntensity, maxIntensity } = pointCloud;
-            const colorPalette = 'rainbow';
+            const colorPalette = document.getElementById('colorPalette').value;
 
             if (pointsObject) {
                 scene.remove(pointsObject);
@@ -233,7 +487,54 @@
             pointsObject = new THREE.Points(geometry, material);
             scene.add(pointsObject);
 
+            // Update point count label with commas
+            document.getElementById('pointCountLabel').textContent = `Points: ${filteredPointCount.toLocaleString()}`;
+
             renderer.render(scene, camera);
+        }
+
+        function updatePointCloud(pointCloud) {
+            if (!geometry) return;
+
+            const { points, minIntensity, maxIntensity } = pointCloud;
+            const colorPalette = document.getElementById('colorPalette').value;
+
+            const sizes = [];
+            const opacities = [];
+            let filteredPointCount = 0;
+
+            points.forEach(point => {
+                if (point.intensity >= currentIntensityFilter * maxIntensity) {
+                    const intensityNorm = (point.intensity - currentIntensityFilter * maxIntensity) / (maxIntensity - currentIntensityFilter * maxIntensity);
+                    sizes.push(currentPointSize * intensityNorm); // Adjust point size based on intensity and slider value
+                    opacities.push((currentTransparency / 2) * intensityNorm); // Halve opacity before applying slider value
+                    filteredPointCount++;
+                }
+            });
+
+            geometry.attributes.size.array = new Float32Array(sizes);
+            geometry.attributes.size.needsUpdate = true;
+
+            geometry.attributes.opacity.array = new Float32Array(opacities);
+            geometry.attributes.opacity.needsUpdate = true;
+
+            // Update point count label with commas
+            document.getElementById('pointCountLabel').textContent = `Points: ${filteredPointCount.toLocaleString()}`;
+
+            renderer.render(scene, camera);
+        }
+
+        function checkFileHeight(pointCloud) {
+            const height = pointCloud.maxZ - pointCloud.minZ;
+            if (height < 10) {
+                showNotification();
+            }
+        }
+
+        function showNotification() {
+            settingsButton.click();
+            var flatNotif = new bootstrap.Collapse(document.getElementById('flatNotif'));
+            flatNotif.show();
         }
 
         function animate() {
@@ -248,6 +549,49 @@
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Reset to default values on label click
+        document.getElementById('verticalScaleLabel').addEventListener('click', function (event) {
+            event.stopPropagation(); // Prevent menu from closing
+            const verticalScale = document.getElementById('verticalScale');
+            verticalScale.value = 1;
+            currentVerticalScale = 1;
+            document.getElementById('verticalScaleLabel').textContent = `Z Scale: ${currentVerticalScale}x`;
+            if (originalPoints) {
+                pointsData = processPoints(originalPoints, currentVerticalScale);
+                visualizePointCloud(pointsData);
+            }
+            adjustGridAndAxes();
+        });
+
+        document.getElementById('pointSizeLabel').addEventListener('click', function (event) {
+            event.stopPropagation(); // Prevent menu from closing
+            const pointSize = document.getElementById('pointSize');
+            pointSize.value = 1;
+            currentPointSize = 1;
+            document.getElementById('pointSizeLabel').textContent = `Point Size: ${currentPointSize}x`;
+            if (pointsData) {
+                updatePointCloud(pointsData);
+            }
+        });
+
+        document.getElementById('transparencyLabel').addEventListener('click', function (event) {
+            event.stopPropagation(); // Prevent menu from closing
+            const transparency = document.getElementById('transparency');
+            transparency.value = 1;
+            currentTransparency = 1;
+            document.getElementById('transparencyLabel').textContent = `Opacity: ${currentTransparency}x`;
+            if (pointsData) {
+                updatePointCloud(pointsData);
+            }
+        });
+
+        // Prevent menu from closing on input interactions
+        document.querySelectorAll('.dropdown-menu').forEach(menu => {
+            menu.addEventListener('click', function (event) {
+                event.stopPropagation();
+            });
         });
     </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM" crossorigin="anonymous"></script>
