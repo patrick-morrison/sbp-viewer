@@ -332,10 +332,11 @@
         }
 
         function processPoints(pointCloud, scale) {
+            const noiseFactor = 0.1;  // Adjust this factor as needed
             const processedPoints = pointCloud.points.map(point => ({
-                x: point.x,
-                y: point.z * scale,  // Apply scaling to the Z coordinate and map it to Y.
-                z: point.y,  // Map Y coordinate to Z.
+                x: point.x + getRandomNoise(noiseFactor),
+                y: point.z * scale + getRandomNoise(noiseFactor),  // Apply scaling to the Z coordinate and map it to Y.
+                z: point.y + getRandomNoise(noiseFactor),  // Map Y coordinate to Z.
                 intensity: point.intensity
             }));
 
