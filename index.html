@@ -377,8 +377,8 @@
             const norm = value / 1.0;
             if (palette === 'rainbow') {
                 // Shift the hue to balance the colors better
-                const hue = (1.0 - norm) * 270; // Adjusted from 240 to 270 to shift blues
-                return new THREE.Color(`hsl(${hue}, 100%, 50%)`);
+                const hue = (1.0 - norm) * 360; // Adjusted from 240 to 270 to shift blues
+                return new THREE.Color(`hsl(${hue}, 85%, 50%)`);
             } else if (palette === 'redBlue') {
                 const r = norm > 0.5 ? 1 : 2 * norm;
                 const g = norm > 0.5 ? 2 * (1 - norm) : 2 * norm;
