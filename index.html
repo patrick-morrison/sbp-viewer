@@ -133,6 +133,22 @@
                                     <option value="magma">Magma</option>
                                 </select>
                             </li>
+                            <li class="mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="bloomToggle">
+                                    <label class="form-check-label settings-label" for="bloomToggle" style="text-align: left; margin-bottom: 0;">Bloom Effect</label>
+                                </div>
+                                <label for="bloomStrength" id="bloomStrengthLabel" class="settings-label" style="font-size: small; color: gray;">Strength: 0.5</label>
+                                <input type="range" id="bloomStrength" min="0" max="1" value="0.5" step="0.05" class="form-range">
+                            </li>
+                            <li class="mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="saoToggle">
+                                    <label class="form-check-label settings-label" for="saoToggle" style="text-align: left; margin-bottom: 0;">Ambient Occlusion</label>
+                                </div>
+                                <label for="saoIntensity" id="saoIntensityLabel" class="settings-label" style="font-size: small; color: gray;">Intensity: 0.1</label>
+                                <input type="range" id="saoIntensity" min="0" max="0.5" value="0.1" step="0.01" class="form-range">
+                            </li>
                         </ul>
                     </li>
                 </ul>
@@ -142,9 +158,24 @@
 
     <div id="loadingIndicator">Loading...</div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-    <script>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+        }
+    }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+        import { SAOPass } from 'three/addons/postprocessing/SAOPass.js';
+        import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+        window.THREE = THREE;
         document.getElementById('fileInput').addEventListener('change', function(event) {
             var fileName = event.target.files[0].name;
             document.querySelector('.custom-file-label').textContent = fileName;
@@ -162,13 +193,56 @@
         let gridHelper = null;
         let centerYAdjustment = 0;
 
+        // Post-processing variables
+        let composer = null;
+        let bloomPass = null;
+        let saoPass = null;
+        let bloomEnabled = false;
+        let saoEnabled = false;
+        let bloomStrength = 0.5;
+        let saoIntensity = 0.1;
+
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer();
+        const renderer = new THREE.WebGLRenderer({
+            antialias: true,
+            depth: true,
+            stencil: false
+        });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        // Set up post-processing composer
+        composer = new EffectComposer(renderer);
+        const renderPass = new RenderPass(scene, camera);
+        composer.addPass(renderPass);
+
+        // Add bloom pass
+        bloomPass = new UnrealBloomPass(
+            new THREE.Vector2(window.innerWidth, window.innerHeight),
+            bloomStrength, // strength
+            0.4, // radius
+            0.05 // threshold (lower = more bloom)
+        );
+        bloomPass.enabled = false;
+        composer.addPass(bloomPass);
+
+        // Add SAO pass
+        saoPass = new SAOPass(scene, camera);
+        saoPass.params.saoBias = 0.5;
+        saoPass.params.saoIntensity = saoIntensity;
+        saoPass.params.saoScale = 1;
+        saoPass.params.saoKernelRadius = 32;
+        saoPass.params.saoMinResolution = 0;
+        saoPass.params.saoBlur = true;
+        saoPass.enabled = false;
+        composer.addPass(saoPass);
+
+        // Add output pass for color correction (must be last)
+        const outputPass = new OutputPass();
+        composer.addPass(outputPass);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
         controls.dampingFactor = 0.25;
         controls.screenSpacePanning = true;
@@ -261,12 +335,45 @@
                 axesHelper.visible = false;
             }
             axesHelper.visible = selectedOption !== 'hide';
-            renderer.render(scene, camera);
+            composer.render();
         });
 
         document.getElementById('colorPalette').addEventListener('change', function () {
             if (pointsData) {
                 visualizePointCloud(pointsData);
+            }
+        });
+
+        document.getElementById('bloomToggle').addEventListener('change', function (event) {
+            bloomEnabled = event.target.checked;
+            bloomPass.enabled = bloomEnabled;
+        });
+
+        document.getElementById('bloomStrength').addEventListener('input', function (event) {
+            bloomStrength = parseFloat(event.target.value);
+            bloomPass.strength = bloomStrength;
+            document.getElementById('bloomStrengthLabel').textContent = `Strength: ${bloomStrength.toFixed(1)}`;
+        });
+
+        document.getElementById('saoToggle').addEventListener('change', function (event) {
+            saoEnabled = event.target.checked;
+            if (saoPass) {
+                saoPass.enabled = saoEnabled;
+                // Toggle depth writing for SAO (breaks transparency but needed for AO)
+                if (pointsObject && pointsObject.material) {
+                    pointsObject.material.depthWrite = saoEnabled;
+                    pointsObject.material.needsUpdate = true;
+                }
+                // Force immediate render update
+                composer.render();
+            }
+        });
+
+        document.getElementById('saoIntensity').addEventListener('input', function (event) {
+            saoIntensity = parseFloat(event.target.value);
+            if (saoPass && saoPass.params) {
+                saoPass.params.saoIntensity = saoIntensity;
+                document.getElementById('saoIntensityLabel').textContent = `Intensity: ${saoIntensity.toFixed(2)}`;
             }
         });
 
@@ -504,7 +611,8 @@
             const material = new THREE.ShaderMaterial({
                 vertexColors: true,
                 transparent: true,
-                depthTest: false,
+                depthTest: true,
+                depthWrite: false, // Default off for proper transparency
                 uniforms: {},
                 vertexShader: `attribute float size;
                     attribute float opacity;
@@ -532,12 +640,13 @@
             });
 
             pointsObject = new THREE.Points(geometry, material);
+            pointsObject.renderOrder = 1; // Render after opaque objects
             scene.add(pointsObject);
 
             // Update point count label with commas
             document.getElementById('pointCountLabel').textContent = `Points: ${filteredPointCount.toLocaleString()}`;
 
-            renderer.render(scene, camera);
+            composer.render();
         }
 
         function updatePointCloud(pointCloud) {
@@ -576,7 +685,7 @@
             // Update point count label with commas
             document.getElementById('pointCountLabel').textContent = `Points: ${filteredPointCount.toLocaleString()}`;
 
-            renderer.render(scene, camera);
+            composer.render();
         }
 
         function checkFileHeight(pointCloud) {
@@ -595,7 +704,7 @@
         function animate() {
             requestAnimationFrame(animate);
             controls.update();
-            renderer.render(scene, camera);
+            composer.render();
         }
 
         animate();
@@ -604,6 +713,7 @@
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
         });
 
         // Reset to default values on label click
