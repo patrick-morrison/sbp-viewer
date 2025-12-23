@@ -343,6 +343,10 @@
 
         function processPoints(pointCloud, scale) {
             const noiseFactor = 0.1;  // Adjust this factor as needed
+            function getRandomNoise(factor = 0.1) {
+                return (Math.random() - 0.5) * factor;
+            }
+
             const processedPoints = pointCloud.points.map(point => ({
                 x: point.x + getRandomNoise(noiseFactor),
                 y: point.z * scale + getRandomNoise(noiseFactor),  // Apply scaling to the Z coordinate and map it to Y.
@@ -385,55 +389,50 @@
         }
 
         function getColor(value, palette) {
-    const norm = value / 1.0;
-    if (palette === 'rainbow') {
-        const hue = (1 - norm) * 360;
-        return new THREE.Color(`hsl(${hue}, 85%, 50%)`);
-    } else if (palette === 'redBlue') {
-        const r = norm > 0.5 ? 1 : 2 * norm;
-        const g = norm > 0.5 ? 2 * (1 - norm) : 2 * norm;
-        const b = norm < 0.5 ? 1 : 2 * (1 - norm);
-        return new THREE.Color(r * 0.6 + 0.4, g * 0.6 + 0.4, b * 0.6 + 0.4);
-    } else if (palette === 'greyscale') {
-        return new THREE.Color(norm, norm, norm);
-    } else if (palette === 'viridis') {
-        const viridis = [
-            [68, 1, 84],
-            [72, 40, 120],
-            [62, 74, 137],
-            [49, 104, 142],
-            [38, 130, 142],
-            [31, 158, 137],
-            [53, 183, 121],
-            [109, 205, 89],
-            [180, 222, 44],
-            [253, 231, 37]
-        ];
-        const colorIndex = Math.floor(norm * (viridis.length - 1));
-        const color = viridis[colorIndex];
-        return new THREE.Color(`rgb(${color[0]}, ${color[1]}, ${color[2]})`);
-    } else if (palette === 'magma') {
-        const magma = [
-            [0, 0, 4],
-            [28, 16, 68],
-            [79, 18, 123],
-            [129, 37, 129],
-            [181, 54, 122],
-            [229, 80, 100],
-            [252, 135, 97],
-            [254, 194, 135],
-            [252, 253, 191]
-        ];
-        const colorIndex = Math.floor(norm * (magma.length - 1));
-        const color = magma[colorIndex];
-        return new THREE.Color(`rgb(${color[0]}, ${color[1]}, ${color[2]})`);
-    } 
-}
-
-
-
-        function getRandomNoise(factor = 0.1) {
-            return (Math.random() - 0.5) * factor;
+            const norm = value / 1.0;
+            if (palette === 'rainbow') {
+                // Shift the hue to balance the colors better
+                const hue = (1.0 - norm) * 360; // Adjusted from 240 to 270 to shift blues
+                return new THREE.Color(`hsl(${hue}, 85%, 50%)`);
+            } else if (palette === 'redBlue') {
+                const r = norm > 0.5 ? 1 : 2 * norm;
+                const g = norm > 0.5 ? 2 * (1 - norm) : 2 * norm;
+                const b = norm < 0.5 ? 1 : 2 * (1 - norm);
+                return new THREE.Color(r * 0.6 + 0.4, g * 0.6 + 0.4, b * 0.6 + 0.4); // Muted colors
+            } else if (palette === 'greyscale') {
+                return new THREE.Color(norm, norm, norm);
+            } else if (palette === 'viridis') {
+                const viridis = [
+                    [68, 1, 84],
+                    [72, 40, 120],
+                    [62, 74, 137],
+                    [49, 104, 142],
+                    [38, 130, 142],
+                    [31, 158, 137],
+                    [53, 183, 121],
+                    [109, 205, 89],
+                    [180, 222, 44],
+                    [253, 231, 37]
+                ];
+                const colorIndex = Math.floor(norm * (viridis.length - 1));
+                const color = viridis[colorIndex];
+                return new THREE.Color(`rgb(${color[0]}, ${color[1]}, ${color[2]})`);
+            } else if (palette === 'magma') {
+                const magma = [
+                    [0, 0, 4],
+                    [28, 16, 68],
+                    [79, 18, 123],
+                    [129, 37, 129],
+                    [181, 54, 122],
+                    [229, 80, 100],
+                    [252, 135, 97],
+                    [254, 194, 135],
+                    [252, 253, 191]
+                ];
+                const colorIndex = Math.floor(norm * (magma.length - 1));
+                const color = magma[colorIndex];
+                return new THREE.Color(`rgb(${color[0]}, ${color[1]}, ${color[2]})`);
+            }
         }
 
         function visualizePointCloud(pointCloud) {
@@ -473,35 +472,34 @@
             geometry.setAttribute('opacity', new THREE.Float32BufferAttribute(opacities, 1));
 
             const material = new THREE.ShaderMaterial({
-    vertexColors: true,
-    transparent: true,
-    depthTest: false,
-    uniforms: {},
-    vertexShader: `attribute float size;
-        attribute float opacity;
-        varying vec3 vColor;
-        varying float vOpacity;
-        void main() {
-            vColor = color;
-            vOpacity = opacity;
-            vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-            gl_PointSize = size * (300.0 / -mvPosition.z);
-            gl_Position = projectionMatrix * mvPosition;
-        }
-    `,
-    fragmentShader: `
-        varying vec3 vColor;
-        varying float vOpacity;
-        void main() {
-            vec2 coord = gl_PointCoord - vec2(0.5);
-            float dist = length(coord);
-            float gaussian = exp(-dist * dist * 10.0); // Gaussian blur effect
-            gl_FragColor = vec4(vColor, vOpacity * gaussian);
-            if (dist > 0.5) discard;
-        }
-    `,
-});
-
+                vertexColors: true,
+                transparent: true,
+                depthTest: false,
+                uniforms: {},
+                vertexShader: `attribute float size;
+                    attribute float opacity;
+                    varying vec3 vColor;
+                    varying float vOpacity;
+                    void main() {
+                        vColor = color;
+                        vOpacity = opacity;
+                        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                        gl_PointSize = size * (300.0 / -mvPosition.z);
+                        gl_Position = projectionMatrix * mvPosition;
+                    }
+                `,
+                fragmentShader: `
+                    varying vec3 vColor;
+                    varying float vOpacity;
+                    void main() {
+                        vec2 coord = gl_PointCoord - vec2(0.5);
+                        float dist = length(coord);
+                        float gaussian = exp(-dist * dist * 5.0); // Gaussian blur effect
+                        gl_FragColor = vec4(vColor, vOpacity * gaussian);
+                        if (dist > 0.6) discard;
+                    }
+                `,
+            });
 
             pointsObject = new THREE.Points(geometry, material);
             scene.add(pointsObject);
