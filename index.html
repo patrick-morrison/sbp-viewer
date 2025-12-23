@@ -125,12 +125,13 @@
                             <li class="mb-3">
                                 <label for="colorPalette" class="settings-label">Color Palette</label>
                                 <select id="colorPalette" class="form-select">
-                                    <option value="rainbow" selected>Rainbow</option>
+                                    <option value="rainbow1" selected>Rainbow 1</option>
+                                    <option value="rainbow2">Rainbow 2</option>
                                     <option value="redBlue">Red/Blue</option>
                                     <option value="greyscale">Greyscale</option>
                                     <option value="viridis">Viridis</option>
                                     <option value="magma">Magma</option>
-                                </select>                                
+                                </select>
                             </li>
                         </ul>
                     </li>
@@ -155,6 +156,7 @@
         let currentPointSize = 1;
         let currentTransparency = 1;
         let currentIntensityFilter = 0;
+        let currentNoiseFactor = 0.1;
         let pointsObject = null;
         let geometry = null;
         let gridHelper = null;
@@ -221,6 +223,19 @@
             if (pointsData) {
                 visualizePointCloud(pointsData);
             }
+        });
+
+        document.getElementById('noiseControl').addEventListener('input', function (event) {
+            showSpinner();
+            setTimeout(() => {
+                currentNoiseFactor = event.target.value;
+                document.getElementById('noiseControlLabel').textContent = `Noise: ${currentNoiseFactor}x`;
+                if (originalPoints) {
+                    pointsData = processPoints(originalPoints, currentVerticalScale);
+                    visualizePointCloud(pointsData);
+                }
+                hideSpinner();
+            }, 50);
         });
 
         document.getElementById('axisSelect').addEventListener('change', function (event) {
@@ -346,15 +361,14 @@
         }
 
         function processPoints(pointCloud, scale) {
-            const noiseFactor = 0.1;  // Adjust this factor as needed
             function getRandomNoise(factor = 0.1) {
                 return (Math.random() - 0.5) * factor;
             }
 
             const processedPoints = pointCloud.points.map(point => ({
-                x: point.x + getRandomNoise(noiseFactor),
-                y: point.z * scale + getRandomNoise(noiseFactor),  // Apply scaling to the Z coordinate and map it to Y.
-                z: point.y + getRandomNoise(noiseFactor),  // Map Y coordinate to Z.
+                x: point.x + getRandomNoise(currentNoiseFactor),
+                y: point.z * scale + getRandomNoise(currentNoiseFactor),  // Apply scaling to the Z coordinate and map it to Y.
+                z: point.y + getRandomNoise(currentNoiseFactor),  // Map Y coordinate to Z.
                 intensity: point.intensity
             }));
 
@@ -395,9 +409,13 @@
 
         function getColor(value, palette) {
             const norm = value / 1.0;
-            if (palette === 'rainbow') {
-                // Shift the hue to balance the colors better
-                const hue = (1.0 - norm) * 360; // Adjusted from 240 to 270 to shift blues
+            if (palette === 'rainbow1') {
+                // Full spectrum rainbow
+                const hue = (1.0 - norm) * 360;
+                return new THREE.Color(`hsl(${hue}, 85%, 50%)`);
+            } else if (palette === 'rainbow2') {
+                // Skewed rainbow (reduced range to balance colors)
+                const hue = (1.0 - norm) * 270;
                 return new THREE.Color(`hsl(${hue}, 85%, 50%)`);
             } else if (palette === 'redBlue') {
                 const r = norm > 0.5 ? 1 : 2 * norm;
