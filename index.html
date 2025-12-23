@@ -452,10 +452,11 @@
             let filteredPointCount = 0;
 
             points.forEach(point => {
-                if (point.intensity >= currentIntensityFilter * maxIntensity) {
+                const filterThreshold = minIntensity + currentIntensityFilter * (maxIntensity - minIntensity);
+                if (point.intensity >= filterThreshold) {
                     positions.push(point.x, point.y, point.z);
 
-                    const intensityNorm = (point.intensity - currentIntensityFilter * maxIntensity) / (maxIntensity - currentIntensityFilter * maxIntensity);
+                    const intensityNorm = (point.intensity - filterThreshold) / (maxIntensity - filterThreshold);
                     const color = getColor(intensityNorm, colorPalette);
                     colors.push(color.r, color.g, color.b);
 
@@ -521,8 +522,9 @@
             let filteredPointCount = 0;
 
             points.forEach(point => {
-                if (point.intensity >= currentIntensityFilter * maxIntensity) {
-                    const intensityNorm = (point.intensity - currentIntensityFilter * maxIntensity) / (maxIntensity - currentIntensityFilter * maxIntensity);
+                const filterThreshold = minIntensity + currentIntensityFilter * (maxIntensity - minIntensity);
+                if (point.intensity >= filterThreshold) {
+                    const intensityNorm = (point.intensity - filterThreshold) / (maxIntensity - filterThreshold);
                     sizes.push(currentPointSize * intensityNorm); // Adjust point size based on intensity and slider value
                     opacities.push((currentTransparency / 2) * intensityNorm); // Halve opacity before applying slider value
                     filteredPointCount++;
