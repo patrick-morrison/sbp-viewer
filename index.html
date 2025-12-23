@@ -304,6 +304,7 @@
             let maxY = -Infinity;
             let minZ = Infinity;
             let maxZ = -Infinity;
+            let usingZForIntensity = false;
 
             for (let line of lines) {
                 const values = line.split(' ').map(Number);
@@ -313,6 +314,9 @@
                 if (!isNaN(x) && !isNaN(y) && !isNaN(z)) {
                     // If intensity is not provided or is NaN, use Z value for color mapping
                     const intensity = !isNaN(intensityValue) ? intensityValue : z;
+                    if (isNaN(intensityValue)) {
+                        usingZForIntensity = true;
+                    }
 
                     points.push({ x, y, z, intensity });
                     if (intensity < minIntensity) minIntensity = intensity;
@@ -338,7 +342,7 @@
 
             centerYAdjustment = -centerZ;
 
-            return { points, minIntensity, maxIntensity, minZ, maxZ };
+            return { points, minIntensity, maxIntensity, minZ, maxZ, usingZForIntensity };
         }
 
         function processPoints(pointCloud, scale) {
@@ -357,7 +361,8 @@
             return {
                 points: processedPoints,
                 minIntensity: pointCloud.minIntensity,
-                maxIntensity: pointCloud.maxIntensity
+                maxIntensity: pointCloud.maxIntensity,
+                usingZForIntensity: pointCloud.usingZForIntensity
             };
         }
 
@@ -436,7 +441,7 @@
         }
 
         function visualizePointCloud(pointCloud) {
-            const { points, minIntensity, maxIntensity } = pointCloud;
+            const { points, minIntensity, maxIntensity, usingZForIntensity } = pointCloud;
             const colorPalette = document.getElementById('colorPalette').value;
 
             if (pointsObject) {
@@ -460,8 +465,14 @@
                     const color = getColor(intensityNorm, colorPalette);
                     colors.push(color.r, color.g, color.b);
 
-                    sizes.push(currentPointSize * intensityNorm); // Adjust point size based on intensity and slider value
-                    opacities.push((currentTransparency / 2) * intensityNorm); // Halve opacity before applying slider value
+                    // For XYZ-only data, add a baseline so all points are visible
+                    if (usingZForIntensity) {
+                        sizes.push(currentPointSize * (0.3 + 0.7 * intensityNorm));
+                        opacities.push((currentTransparency / 2) * (0.4 + 0.6 * intensityNorm));
+                    } else {
+                        sizes.push(currentPointSize * intensityNorm);
+                        opacities.push((currentTransparency / 2) * intensityNorm);
+                    }
                     filteredPointCount++;
                 }
             });
@@ -514,7 +525,7 @@
         function updatePointCloud(pointCloud) {
             if (!geometry) return;
 
-            const { points, minIntensity, maxIntensity } = pointCloud;
+            const { points, minIntensity, maxIntensity, usingZForIntensity } = pointCloud;
             const colorPalette = document.getElementById('colorPalette').value;
 
             const sizes = [];
@@ -525,8 +536,15 @@
                 const filterThreshold = minIntensity + currentIntensityFilter * (maxIntensity - minIntensity);
                 if (point.intensity >= filterThreshold) {
                     const intensityNorm = (point.intensity - filterThreshold) / (maxIntensity - filterThreshold);
-                    sizes.push(currentPointSize * intensityNorm); // Adjust point size based on intensity and slider value
-                    opacities.push((currentTransparency / 2) * intensityNorm); // Halve opacity before applying slider value
+
+                    // For XYZ-only data, add a baseline so all points are visible
+                    if (usingZForIntensity) {
+                        sizes.push(currentPointSize * (0.3 + 0.7 * intensityNorm));
+                        opacities.push((currentTransparency / 2) * (0.4 + 0.6 * intensityNorm));
+                    } else {
+                        sizes.push(currentPointSize * intensityNorm);
+                        opacities.push((currentTransparency / 2) * intensityNorm);
+                    }
                     filteredPointCount++;
                 }
             });
