@@ -88,8 +88,8 @@
                         <input type="file" id="fileInput" accept=".txt" class="custom-file-input">
                     </li>
                     <li class="nav-item">
-                        <button class="btn btn-dark dropdown-toggle" type="button" id="settingsButton" data-bs-toggle="dropdown" aria-expanded="false">Settings</button>
-                        <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark p-3" aria-labelledby="settingsButton">
+                        <button class="btn btn-dark dropdown-toggle" type="button" id="dataButton" data-bs-toggle="dropdown" aria-expanded="false">Data</button>
+                        <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark p-3" aria-labelledby="dataButton">
                             <li class="mb-3">
                                 <label for="verticalScale" id="verticalScaleLabel" class="settings-label">Z Scale: 1x</label>
                                 <input type="range" id="verticalScale" min="0.5" max="20" value="1" step="0.5" class="form-range">
@@ -115,14 +115,6 @@
                                 <label id="pointCountLabel" class="settings-label" style="font-size: small; color: gray;">Points: 0</label>
                             </li>
                             <li class="mb-3">
-                                <label for="axisSelect" class="settings-label">Axis</label>
-                                <select id="axisSelect" class="form-select">
-                                    <option value="world">World Floor</option>
-                                    <option value="centered">Centered</option>
-                                    <option value="hide" selected>Hide Axis</option>
-                                </select>
-                            </li>
-                            <li class="mb-3">
                                 <label for="colorPalette" class="settings-label">Color Palette</label>
                                 <select id="colorPalette" class="form-select">
                                     <option value="rainbow1" selected>Rainbow 1</option>
@@ -131,6 +123,54 @@
                                     <option value="greyscale">Greyscale</option>
                                     <option value="viridis">Viridis</option>
                                     <option value="magma">Magma</option>
+                                </select>
+                            </li>
+                        </ul>
+                    </li>
+                    <li class="nav-item">
+                        <button class="btn btn-dark dropdown-toggle" type="button" id="contextButton" data-bs-toggle="dropdown" aria-expanded="false" disabled title="Load main file">Context</button>
+                        <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark p-3" aria-labelledby="contextButton" style="min-width: 250px;">
+                            <li class="mb-3">
+                                <label for="contextFileInput" class="settings-label">Context File</label>
+                                <input type="file" id="contextFileInput" accept=".txt" class="form-control form-control-sm">
+                            </li>
+                            <li class="mb-3">
+                                <label for="contextColorPalette" class="settings-label">Context Color</label>
+                                <select id="contextColorPalette" class="form-select form-select-sm">
+                                    <option value="redBlue" selected>Red/Blue</option>
+                                    <option value="rainbow1">Rainbow 1</option>
+                                    <option value="rainbow2">Rainbow 2</option>
+                                    <option value="greyscale">Greyscale</option>
+                                    <option value="viridis">Viridis</option>
+                                    <option value="magma">Magma</option>
+                                </select>
+                            </li>
+                            <li class="mb-3">
+                                <label for="contextZOffset" id="contextZOffsetLabel" class="settings-label" style="font-size: small;">Z Offset: 0</label>
+                                <input type="range" id="contextZOffset" min="-50" max="50" value="0" step="0.1" class="form-range">
+                            </li>
+                            <li class="mb-3">
+                                <label for="contextOpacity" id="contextOpacityLabel" class="settings-label" style="font-size: small;">Opacity: 1x</label>
+                                <input type="range" id="contextOpacity" min="0.1" max="2" value="1" step="0.1" class="form-range">
+                            </li>
+                        </ul>
+                    </li>
+                    <li class="nav-item">
+                        <button class="btn btn-dark dropdown-toggle" type="button" id="displayButton" data-bs-toggle="dropdown" aria-expanded="false">Display</button>
+                        <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark p-3" aria-labelledby="displayButton">
+                            <li class="mb-3">
+                                <label for="cameraMode" class="settings-label">Camera</label>
+                                <select id="cameraMode" class="form-select">
+                                    <option value="perspective" selected>Perspective</option>
+                                    <option value="orthographic">Orthographic</option>
+                                </select>
+                            </li>
+                            <li class="mb-3">
+                                <label for="axisSelect" class="settings-label">Axis</label>
+                                <select id="axisSelect" class="form-select">
+                                    <option value="world">World Floor</option>
+                                    <option value="centered">Centered</option>
+                                    <option value="hide" selected>Hide Axis</option>
                                 </select>
                             </li>
                             <li class="mb-3">
@@ -193,6 +233,15 @@
         let gridHelper = null;
         let centerYAdjustment = 0;
 
+        // Context file variables
+        let contextPointsData = null;
+        let contextOriginalPoints = null;
+        let contextPointsObject = null;
+        let contextGeometry = null;
+        let mainFileOffsets = null; // Store main file's center offsets
+        let contextZOffset = 0;
+        let contextOpacityMultiplier = 1;
+
         // Post-processing variables
         let composer = null;
         let bloomPass = null;
@@ -203,7 +252,21 @@
         let saoIntensity = 0.1;
 
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+        // Create both cameras
+        const perspectiveCamera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const aspect = window.innerWidth / window.innerHeight;
+        const frustumSize = 100;
+        const orthographicCamera = new THREE.OrthographicCamera(
+            frustumSize * aspect / -2, frustumSize * aspect / 2,
+            frustumSize / 2, frustumSize / -2,
+            0.1, 1000
+        );
+
+        // Set active camera
+        let camera = perspectiveCamera;
+        let currentCameraMode = 'perspective';
+
         const renderer = new THREE.WebGLRenderer({
             antialias: true,
             depth: true,
@@ -250,6 +313,9 @@
         controls.minPolarAngle = 0;
         controls.enableRotate = true;
 
+        // Set initial camera positions
+        perspectiveCamera.position.set(0, 0, 50);
+        orthographicCamera.position.set(0, 0, 50);
         camera.position.set(0, 0, 50);
 
         const axesHelper = new THREE.AxesHelper(5);
@@ -257,6 +323,52 @@
         axesHelper.visible = false;
 
         document.getElementById('fileInput').addEventListener('change', handleFileSelect, false);
+
+        document.getElementById('contextFileInput').addEventListener('change', function(event) {
+            if (!mainFileOffsets) {
+                alert('Please load a main file first');
+                event.target.value = '';
+                return;
+            }
+            showSpinner();
+            requestAnimationFrame(() => {
+                const file = event.target.files[0];
+                const reader = new FileReader();
+
+                reader.onload = function(e) {
+                    const contents = e.target.result;
+                    contextOriginalPoints = parsePointCloudData(contents, mainFileOffsets);
+                    contextPointsData = processPoints(contextOriginalPoints, currentVerticalScale, contextZOffset);
+                    visualizeContextPointCloud(contextPointsData);
+                    hideSpinner();
+                };
+
+                reader.readAsText(file);
+            });
+        }, false);
+
+        document.getElementById('contextColorPalette').addEventListener('change', function () {
+            if (contextPointsData) {
+                visualizeContextPointCloud(contextPointsData);
+            }
+        });
+
+        document.getElementById('contextZOffset').addEventListener('input', function (event) {
+            contextZOffset = parseFloat(event.target.value);
+            document.getElementById('contextZOffsetLabel').textContent = `Z Offset: ${contextZOffset}`;
+            if (contextOriginalPoints) {
+                contextPointsData = processPoints(contextOriginalPoints, currentVerticalScale, contextZOffset);
+                visualizeContextPointCloud(contextPointsData);
+            }
+        });
+
+        document.getElementById('contextOpacity').addEventListener('input', function (event) {
+            contextOpacityMultiplier = parseFloat(event.target.value);
+            document.getElementById('contextOpacityLabel').textContent = `Opacity: ${contextOpacityMultiplier}x`;
+            if (contextPointsData) {
+                visualizeContextPointCloud(contextPointsData);
+            }
+        });
 
         document.getElementById('verticalScale').addEventListener('input', function (event) {
             showSpinner();
@@ -266,6 +378,10 @@
                 if (originalPoints) {
                     pointsData = processPoints(originalPoints, currentVerticalScale);
                     visualizePointCloud(pointsData);
+                }
+                if (contextOriginalPoints) {
+                    contextPointsData = processPoints(contextOriginalPoints, currentVerticalScale, contextZOffset);
+                    visualizeContextPointCloud(contextPointsData);
                 }
                 adjustGridAndAxes();
                 hideSpinner();
@@ -281,6 +397,9 @@
             if (pointsData) {
                 updatePointCloud(pointsData);
             }
+            if (contextPointsData) {
+                visualizeContextPointCloud(contextPointsData);
+            }
         });
 
         document.getElementById('transparency').addEventListener('input', function (event) {
@@ -288,6 +407,9 @@
             document.getElementById('transparencyLabel').textContent = `Opacity: ${currentTransparency}x`;
             if (pointsData) {
                 updatePointCloud(pointsData);
+            }
+            if (contextPointsData) {
+                visualizeContextPointCloud(contextPointsData);
             }
         });
 
@@ -307,6 +429,10 @@
                 if (originalPoints) {
                     pointsData = processPoints(originalPoints, currentVerticalScale);
                     visualizePointCloud(pointsData);
+                }
+                if (contextOriginalPoints) {
+                    contextPointsData = processPoints(contextOriginalPoints, currentVerticalScale, contextZOffset);
+                    visualizeContextPointCloud(contextPointsData);
                 }
                 hideSpinner();
             }, 50);
@@ -377,6 +503,38 @@
             }
         });
 
+        document.getElementById('cameraMode').addEventListener('change', function (event) {
+            currentCameraMode = event.target.value;
+
+            // Store current camera position and target
+            const currentPosition = camera.position.clone();
+            const currentTarget = controls.target.clone();
+
+            // Switch camera
+            if (currentCameraMode === 'orthographic') {
+                camera = orthographicCamera;
+            } else {
+                camera = perspectiveCamera;
+            }
+
+            // Restore position and target to new camera
+            camera.position.copy(currentPosition);
+            controls.object = camera;
+            controls.target.copy(currentTarget);
+            controls.update();
+
+            // Update render passes to use new camera
+            if (composer && composer.passes) {
+                composer.passes[0].camera = camera; // RenderPass
+                if (saoPass) {
+                    saoPass.camera = camera;
+                }
+            }
+
+            // Force render update
+            composer.render();
+        });
+
         document.getElementById('setZFactorLink').addEventListener('click', function() {
             event.stopPropagation();
             document.getElementById('verticalScale').value = 10;
@@ -398,6 +556,10 @@
                     visualizePointCloud(pointsData);
                     adjustGridAndAxes();
                     checkFileHeight(originalPoints);
+                    // Enable Context button now that main file is loaded
+                    const contextButton = document.getElementById('contextButton');
+                    contextButton.disabled = false;
+                    contextButton.removeAttribute('title');
                     hideSpinner();
                 };
 
@@ -415,7 +577,7 @@
             fileSpinner.style.display = 'none';
         }
 
-        function parsePointCloudData(data) {
+        function parsePointCloudData(data, externalOffsets = null) {
             const lines = data.split('\n');
             const points = [];
             let minIntensity = Infinity;
@@ -452,9 +614,20 @@
                 }
             }
 
-            const centerX = (minX + maxX) / 2;
-            const centerY = (minY + maxY) / 2;
-            const centerZ = (minZ + maxZ) / 2;
+            let centerX, centerY, centerZ;
+            if (externalOffsets) {
+                // Use external offsets for context files
+                centerX = externalOffsets.centerX;
+                centerY = externalOffsets.centerY;
+                centerZ = externalOffsets.centerZ;
+            } else {
+                // Calculate offsets for main file
+                centerX = (minX + maxX) / 2;
+                centerY = (minY + maxY) / 2;
+                centerZ = (minZ + maxZ) / 2;
+                // Store offsets for context files to use
+                mainFileOffsets = { centerX, centerY, centerZ };
+            }
 
             points.forEach(point => {
                 point.x -= centerX;
@@ -462,19 +635,21 @@
                 point.z -= centerZ;
             });
 
-            centerYAdjustment = -centerZ;
+            if (!externalOffsets) {
+                centerYAdjustment = -centerZ;
+            }
 
             return { points, minIntensity, maxIntensity, minZ, maxZ, usingZForIntensity };
         }
 
-        function processPoints(pointCloud, scale) {
+        function processPoints(pointCloud, scale, zOffsetBeforeScale = 0) {
             function getRandomNoise(factor = 0.1) {
                 return (Math.random() - 0.5) * factor;
             }
 
             const processedPoints = pointCloud.points.map(point => ({
                 x: point.x + getRandomNoise(currentNoiseFactor),
-                y: point.z * scale + getRandomNoise(currentNoiseFactor),  // Apply scaling to the Z coordinate and map it to Y.
+                y: (point.z + zOffsetBeforeScale) * scale + getRandomNoise(currentNoiseFactor),  // Apply offset before scaling, then scale Z to Y
                 z: point.y + getRandomNoise(currentNoiseFactor),  // Map Y coordinate to Z.
                 intensity: point.intensity
             }));
@@ -649,6 +824,82 @@
             composer.render();
         }
 
+        function visualizeContextPointCloud(pointCloud) {
+            const { points, minIntensity, maxIntensity, usingZForIntensity } = pointCloud;
+            const colorPalette = document.getElementById('contextColorPalette').value;
+
+            if (contextPointsObject) {
+                scene.remove(contextPointsObject);
+                contextPointsObject.geometry.dispose();
+                contextPointsObject.material.dispose();
+            }
+
+            const positions = [];
+            const colors = [];
+            const sizes = [];
+            const opacities = [];
+
+            points.forEach(point => {
+                // Z offset already applied in processPoints
+                positions.push(point.x, point.y, point.z);
+
+                const intensityNorm = (point.intensity - minIntensity) / (maxIntensity - minIntensity);
+                const color = getColor(intensityNorm, colorPalette);
+                colors.push(color.r, color.g, color.b);
+
+                if (usingZForIntensity) {
+                    sizes.push(currentPointSize * (0.3 + 0.7 * intensityNorm));
+                    opacities.push((currentTransparency / 2) * (0.4 + 0.6 * intensityNorm) * contextOpacityMultiplier);
+                } else {
+                    sizes.push(currentPointSize * intensityNorm);
+                    opacities.push((currentTransparency / 2) * intensityNorm * contextOpacityMultiplier);
+                }
+            });
+
+            contextGeometry = new THREE.BufferGeometry();
+            contextGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            contextGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            contextGeometry.setAttribute('size', new THREE.Float32BufferAttribute(sizes, 1));
+            contextGeometry.setAttribute('opacity', new THREE.Float32BufferAttribute(opacities, 1));
+
+            const material = new THREE.ShaderMaterial({
+                vertexColors: true,
+                transparent: true,
+                depthTest: true,
+                depthWrite: false,
+                uniforms: {},
+                vertexShader: `attribute float size;
+                    attribute float opacity;
+                    varying vec3 vColor;
+                    varying float vOpacity;
+                    void main() {
+                        vColor = color;
+                        vOpacity = opacity;
+                        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                        gl_PointSize = size * (300.0 / -mvPosition.z);
+                        gl_Position = projectionMatrix * mvPosition;
+                    }
+                `,
+                fragmentShader: `
+                    varying vec3 vColor;
+                    varying float vOpacity;
+                    void main() {
+                        vec2 coord = gl_PointCoord - vec2(0.5);
+                        float dist = length(coord);
+                        float gaussian = exp(-dist * dist * 5.0);
+                        gl_FragColor = vec4(vColor, vOpacity * gaussian);
+                        if (dist > 0.6) discard;
+                    }
+                `,
+            });
+
+            contextPointsObject = new THREE.Points(contextGeometry, material);
+            contextPointsObject.renderOrder = 2; // Render after main points
+            scene.add(contextPointsObject);
+
+            composer.render();
+        }
+
         function updatePointCloud(pointCloud) {
             if (!geometry) return;
 
@@ -696,7 +947,7 @@
         }
 
         function showNotification() {
-            settingsButton.click();
+            dataButton.click();
             var flatNotif = new bootstrap.Collapse(document.getElementById('flatNotif'));
             flatNotif.show();
         }
@@ -710,8 +961,19 @@
         animate();
 
         window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
+            const aspect = window.innerWidth / window.innerHeight;
+
+            // Update perspective camera
+            perspectiveCamera.aspect = aspect;
+            perspectiveCamera.updateProjectionMatrix();
+
+            // Update orthographic camera
+            orthographicCamera.left = frustumSize * aspect / -2;
+            orthographicCamera.right = frustumSize * aspect / 2;
+            orthographicCamera.top = frustumSize / 2;
+            orthographicCamera.bottom = frustumSize / -2;
+            orthographicCamera.updateProjectionMatrix();
+
             renderer.setSize(window.innerWidth, window.innerHeight);
             composer.setSize(window.innerWidth, window.innerHeight);
         });
