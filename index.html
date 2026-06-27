@@ -66,6 +66,60 @@
         #fileSpinner {
             display: none;
         }
+        #dropOverlay {
+            position: fixed;
+            inset: 0;
+            z-index: 150;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            padding: 24px;
+            background: rgba(0, 0, 0, 0.68);
+            backdrop-filter: blur(2px);
+            pointer-events: none;
+        }
+        #dropOverlay.active {
+            display: flex;
+            pointer-events: auto;
+        }
+        .drop-zone {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: min(360px, 42vw);
+            min-height: 180px;
+            border: 2px dashed #adb5bd;
+            border-radius: 8px;
+            background: rgba(33, 37, 41, 0.92);
+            color: #f8f9fa;
+            text-align: center;
+            transition: background-color 0.15s ease, border-color 0.15s ease;
+        }
+        .drop-zone:hover,
+        .drop-zone.drag-over {
+            background: rgba(73, 80, 87, 0.96);
+            border-color: #ffffff;
+        }
+        .drop-zone-title {
+            font-size: 1.15rem;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+        .drop-zone-hint {
+            color: #ced4da;
+            font-size: 0.9rem;
+        }
+        @media (max-width: 700px) {
+            #dropOverlay {
+                flex-direction: column;
+            }
+            .drop-zone {
+                width: min(360px, 88vw);
+                min-height: 140px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -197,6 +251,16 @@
     </nav>
 
     <div id="loadingIndicator">Loading...</div>
+    <div id="dropOverlay" aria-hidden="true">
+        <div class="drop-zone" id="mainDropZone" data-drop-target="main">
+            <div class="drop-zone-title">Main File</div>
+            <div class="drop-zone-hint" id="mainDropHint">Drop a TXT or CSV point cloud</div>
+        </div>
+        <div class="drop-zone" id="contextDropZone" data-drop-target="context">
+            <div class="drop-zone-title">Context File</div>
+            <div class="drop-zone-hint">Drop a TXT or CSV context cloud</div>
+        </div>
+    </div>
 
     <script type="importmap">
     {
@@ -216,10 +280,6 @@
         import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
         window.THREE = THREE;
-        document.getElementById('fileInput').addEventListener('change', function(event) {
-            var fileName = event.target.files[0].name;
-            document.querySelector('.custom-file-label').textContent = fileName;
-        });
 
         let pointsData = null;
         let originalPoints = null;
@@ -250,6 +310,7 @@
         let saoEnabled = false;
         let bloomStrength = 0.5;
         let saoIntensity = 0.1;
+        let dragDepth = 0;
 
         const scene = new THREE.Scene();
 
@@ -325,27 +386,19 @@
         document.getElementById('fileInput').addEventListener('change', handleFileSelect, false);
 
         document.getElementById('contextFileInput').addEventListener('change', function(event) {
-            if (!mainFileOffsets) {
-                alert('Please load a main file first');
-                event.target.value = '';
-                return;
-            }
-            showSpinner();
-            requestAnimationFrame(() => {
-                const file = event.target.files[0];
-                const reader = new FileReader();
-
-                reader.onload = function(e) {
-                    const contents = e.target.result;
-                    contextOriginalPoints = parsePointCloudData(contents, mainFileOffsets);
-                    contextPointsData = processPoints(contextOriginalPoints, currentVerticalScale, contextZOffset);
-                    visualizeContextPointCloud(contextPointsData);
-                    hideSpinner();
-                };
-
-                reader.readAsText(file);
-            });
+            loadContextFile(event.target.files[0]);
         }, false);
+
+        document.addEventListener('dragenter', handleDragEnter);
+        document.addEventListener('dragover', handleDragOver);
+        document.addEventListener('dragleave', handleDragLeave);
+        document.addEventListener('drop', handleDrop);
+
+        document.querySelectorAll('.drop-zone').forEach(zone => {
+            zone.addEventListener('dragenter', () => zone.classList.add('drag-over'));
+            zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+            zone.addEventListener('drop', () => zone.classList.remove('drag-over'));
+        });
 
         document.getElementById('contextColorPalette').addEventListener('change', function () {
             if (contextPointsData) {
@@ -544,14 +597,25 @@
         });
 
         function handleFileSelect(event) {
+            loadMainFile(event.target.files[0]);
+        }
+
+        function loadMainFile(file) {
+            if (!file) return;
+
+            document.querySelector('.custom-file-label').textContent = file.name;
             showSpinner();
             requestAnimationFrame(() => {
-                const file = event.target.files[0];
                 const reader = new FileReader();
 
                 reader.onload = function(e) {
                     const contents = e.target.result;
                     originalPoints = parsePointCloudData(contents);
+                    if (!originalPoints.points.length) {
+                        hideSpinner();
+                        alert('No valid XYZ points were found in this file.');
+                        return;
+                    }
                     pointsData = processPoints(originalPoints, currentVerticalScale);
                     visualizePointCloud(pointsData);
                     adjustGridAndAxes();
@@ -565,6 +629,98 @@
 
                 reader.readAsText(file);
             });
+        }
+
+        function loadContextFile(file) {
+            if (!file) return;
+
+            if (!mainFileOffsets) {
+                alert('Please load a main file first');
+                document.getElementById('contextFileInput').value = '';
+                return;
+            }
+            showSpinner();
+            requestAnimationFrame(() => {
+                const reader = new FileReader();
+
+                reader.onload = function(e) {
+                    const contents = e.target.result;
+                    contextOriginalPoints = parsePointCloudData(contents, mainFileOffsets);
+                    if (!contextOriginalPoints.points.length) {
+                        hideSpinner();
+                        alert('No valid XYZ points were found in this context file.');
+                        return;
+                    }
+                    contextPointsData = processPoints(contextOriginalPoints, currentVerticalScale, contextZOffset);
+                    visualizeContextPointCloud(contextPointsData);
+                    hideSpinner();
+                };
+
+                reader.readAsText(file);
+            });
+        }
+
+        function handleDragEnter(event) {
+            if (!isFileDrag(event)) return;
+
+            event.preventDefault();
+            dragDepth++;
+            showDropOverlay();
+        }
+
+        function handleDragOver(event) {
+            if (!isFileDrag(event)) return;
+
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'copy';
+        }
+
+        function handleDragLeave(event) {
+            if (!isFileDrag(event)) return;
+
+            event.preventDefault();
+            dragDepth = Math.max(0, dragDepth - 1);
+            if (dragDepth === 0) {
+                hideDropOverlay();
+            }
+        }
+
+        function handleDrop(event) {
+            if (!isFileDrag(event)) return;
+
+            event.preventDefault();
+            const target = event.target.closest('[data-drop-target]');
+            const file = event.dataTransfer.files[0];
+            dragDepth = 0;
+            hideDropOverlay();
+
+            if (!file) return;
+            if (target && target.dataset.dropTarget === 'context' && mainFileOffsets) {
+                loadContextFile(file);
+            } else {
+                loadMainFile(file);
+            }
+        }
+
+        function isFileDrag(event) {
+            return Array.from(event.dataTransfer?.types || []).includes('Files');
+        }
+
+        function showDropOverlay() {
+            const dropOverlay = document.getElementById('dropOverlay');
+            const contextDropZone = document.getElementById('contextDropZone');
+            const mainDropHint = document.getElementById('mainDropHint');
+
+            contextDropZone.style.display = mainFileOffsets ? 'flex' : 'none';
+            mainDropHint.textContent = mainFileOffsets ? 'Drop to replace the main cloud' : 'Drop a TXT or CSV point cloud';
+            dropOverlay.classList.add('active');
+            dropOverlay.setAttribute('aria-hidden', 'false');
+        }
+
+        function hideDropOverlay() {
+            document.getElementById('dropOverlay').classList.remove('active');
+            document.getElementById('dropOverlay').setAttribute('aria-hidden', 'true');
+            document.querySelectorAll('.drop-zone').forEach(zone => zone.classList.remove('drag-over'));
         }
 
         function showSpinner() {
@@ -615,6 +771,10 @@
                     if (z < minZ) minZ = z;
                     if (z > maxZ) maxZ = z;
                 }
+            }
+
+            if (!points.length) {
+                return { points, minIntensity, maxIntensity, minZ, maxZ, usingZForIntensity };
             }
 
             let centerX, centerY, centerZ;
