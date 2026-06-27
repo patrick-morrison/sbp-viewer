@@ -85,7 +85,7 @@
                     </li>
                     <li class="nav-item me-2 d-flex align-items-center">
                         <label for="fileInput" class="custom-file-label">Choose File</label>
-                        <input type="file" id="fileInput" accept=".txt" class="custom-file-input">
+                        <input type="file" id="fileInput" accept=".txt,.csv" class="custom-file-input">
                     </li>
                     <li class="nav-item">
                         <button class="btn btn-dark dropdown-toggle" type="button" id="dataButton" data-bs-toggle="dropdown" aria-expanded="false">Data</button>
@@ -132,7 +132,7 @@
                         <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark p-3" aria-labelledby="contextButton" style="min-width: 250px;">
                             <li class="mb-3">
                                 <label for="contextFileInput" class="settings-label">Context File</label>
-                                <input type="file" id="contextFileInput" accept=".txt" class="form-control form-control-sm">
+                                <input type="file" id="contextFileInput" accept=".txt,.csv" class="form-control form-control-sm">
                             </li>
                             <li class="mb-3">
                                 <label for="contextColorPalette" class="settings-label">Context Color</label>
@@ -578,7 +578,7 @@
         }
 
         function parsePointCloudData(data, externalOffsets = null) {
-            const lines = data.split('\n');
+            const lines = data.split(/\r?\n/);
             const points = [];
             let minIntensity = Infinity;
             let maxIntensity = -Infinity;
@@ -591,7 +591,10 @@
             let usingZForIntensity = false;
 
             for (let line of lines) {
-                const values = line.split(' ').map(Number);
+                line = line.trim();
+                if (!line) continue;
+
+                const values = line.split(/[,\t; ]+/).map(Number);
                 const [x, y, z, intensityValue] = values;
 
                 // Check if we have valid XYZ data
